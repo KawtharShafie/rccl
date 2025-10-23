@@ -391,6 +391,14 @@ ncclResult_t ncclReduceScatter_impl(const void* sendbuff, void* recvbuff, size_t
     sendbuff, recvbuff, recvcount, datatype, op, 0, comm, stream, /* Args */
     REDUCESCATTER_CHUNKSTEPS, comm -> rcclUseOneSlice ? REDUCESCATTER_SLICESTEPS_SINGLE_NODE : REDUCESCATTER_SLICESTEPS, nullptr };
 
+  int nRanks;
+  int in_place = 0;
+  NCCLCHECK(ncclCommCount(comm, &nRanks));
+  size_t msgSize = recvcount * ncclTypeSize(datatype) * nRanks;
+  
+  // Temporary Buffer to store data from each rank 
+  void* tempbuff = comm->tempBuff;
+
   if (!mscclIsCaller()) // when msccl falls back to
   {
     NCCLCHECK(Recorder::instance().record(rrReduceScatter, info));
@@ -402,6 +410,26 @@ ncclResult_t ncclReduceScatter_impl(const void* sendbuff, void* recvbuff, size_t
       recvcount, datatype, 0, 0, op, mscclFuncReduceScatter, comm, stream);
   }
 
+  if (comm->enableDirectReduceScatter) {
+    // Use Direct Reduce Scatter Algorithm
+    if (recvcount == 0) return ncclSuccess;
+    size_t offset = recvcount * ncclTypeSize(datatype);
+    if (((char *) sendbuff) == (((char *) recvbuff) + comm->rank * offset)) {
+      in_place = 1;
+    }
+
+    NCCLCHECK(ncclGroupStart());
+    for (int i = 0; i < nRanks; i++) {
+      int peer = (comm->rank + i) % nRanks;
+      if (in_place && (peer == comm->rank)) {
+        continue;
+      }
+      //TODO: Explore Batching Sends to study Register Pressure
+      NCCLCHECK(ncclSend(((char *)sendbuff) + peer * offset, recvcount, datatype, peer, comm, stream));
+      NCCLCHECK(ncclRecv(((char *)tempbuff) + peer * offset, recvcount, datatype, peer, comm, stream));
+    }
+    NCCLCHECK(ncclGroupEnd());
+  }
   return ncclEnqueueCheck(&info);
 }
 

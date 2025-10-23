@@ -717,7 +717,12 @@ struct ncclComm {
   int unroll;
   // custom collective [RCCL]
   bool enableCustColl;
-  
+  // Direct Reduce Scatter [RCCL] 
+  bool enableDirectReduceScatter;
+  // Temporary Buffer [RCCL]
+  void* tempBuff;
+  //size_t tempBuffSize;
+
   uint64_t endMagic;
 };
 

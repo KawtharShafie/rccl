@@ -131,6 +131,39 @@ namespace {
   }
 }
 
+template<typename T, typename RedOp>
+#if defined(USE_INDIRECT_FUNCTION_CALL) && !defined(__gfx942__) && !defined(__gfx950__)
+__device__ void runDirectReduceScatter(int tid, int nthreads, struct ncclDevWorkColl* work) {
+#else
+  __device__ __attribute__((noinline)) void runDirectReduceScatter(int tid, int nthreads, struct ncclDevWorkColl* work) {
+#endif
+    const int nranks = ncclShmem.comm.nRanks;
+    const int currentRank = (T*)work->currentRank;
+    size_t count = (T*)work->count;
+
+    //Access the temporary buffer with the data to be reduced
+    const T* tempBuffer = (const T*)work->tempBuff;
+    T* recvBuffer = (T*)work->recvbuff;
+    T* sendBuffer = (T*)work->sendbuff;
+    const ssize_t sizePerRank = count / nranks;
+
+    // Perform direct reduction using reduceCopy
+    for (int i = 0; i < nranks; i++) {
+      const ssize_t offset = i * sizePerRank;
+
+      if (i == currentRank) {
+        // Use reduceCopy to perform the reduction of elements of current rank
+        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
+            tid, nthreads, 0, nullptr, false, 1, sendBuffer + offset, 1, (void**)&recvbuff, sizePerRank);
+      } else {
+        // Use reduceCopy to perform the reduction into recvbuff
+        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
+            tid, nthreads, 0, nullptr, false, 1, (void**)&tempBuffer + offset, 1, (void**)&recvbuff, sizePerRank);
+      }
+    }
+  }
+}
+
 #if defined(__gfx942__) || defined(__gfx950__) // Use a single slice per simple primitive for a single node on some GFX9 devices.
 #define rcclReduceScatterRunRingSimpleProtoImpl(tid, nthreads, work) \
   if(work->rcclUseOneSlice){ \
@@ -156,7 +189,11 @@ struct RunWorkColl<ncclFuncReduceScatter, T, RedOp, NCCL_ALGO_RING, NCCL_PROTO_S
 template<typename T, typename RedOp>
 struct RunWorkColl<ncclFuncReduceScatter, T, RedOp, NCCL_ALGO_RING, NCCL_PROTO_LL> {
   __device__ __forceinline__ void run(int tid, int nthreads, struct ncclDevWorkColl* work) {
-    runRing<T, RedOp, ProtoLL>(tid, nthreads, work);
+    if (work->enableDirectReduceScatter) {
+      runDirectReduceScatter<T, RedOp>(tid, nthreads, work);
+    } else {
+      runRing<T, RedOp, ProtoLL>(tid, nthreads, work);
+    }
   }
 };
 

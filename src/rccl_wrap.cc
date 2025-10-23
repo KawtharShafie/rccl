@@ -358,6 +358,10 @@ bool rcclUseAllGatherDirect(struct ncclComm* comm, size_t& msgSize) {
 
   comm->enableCustColl = IsArchMatch(comm->topo->nodes[GPU].nodes[0].gpu.gcn, "gfx950") || IsArchMatch(comm->topo->nodes[GPU].nodes[0].gpu.gcn, "gfx942");
 
+  // Enable Direct Reduce Scatter
+  // TODO: Add condition and threshold for when direct RS will be used
+  comm->enableDirectReduceScatter = 1;
+
   int rankMultiple = comm->nRanks % 8;
   
   //return (comm->enableCustColl && (comm->nNodes > 1) && (msgSize <= threshold) && (threshold != -1))
@@ -384,6 +388,10 @@ void rcclSetPxn(struct ncclComm* comm,  int& rcclPxnDisable) {
   }
   rcclPxnDisable = pxnDisable;
   comm->enableCustColl = !pxnDisable;
+  
+  // Enable Direct Reduce Scatter
+  // TODO: Add condition and threshold for when direct RS will be used
+  comm->enableDirectReduceScatter = 1;
 }
 
 void rcclSetP2pNetChunkSize(struct ncclComm* comm,  int& rcclP2pNetChunkSize) {

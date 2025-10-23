@@ -385,7 +385,14 @@ ncclResult_t ncclTasksRegAndEnqueue(struct ncclComm* comm) {
     devWork.redOpArgIsPtr = task->opDev.scalarArgIsPtr;
     devWork.oneNode = (comm->nNodes == 1);
     devWork.rcclUseOneSlice = comm->rcclUseOneSlice;
-
+    // Direct Reduce Scatter 
+    if (comm->enableDirectReduceScatter) {
+      devWork.enableDirectReduceScatter = comm->enableDirectReduceScatter;
+      devWork.tempBuff = comm->tempBuff;
+      devWork.currentRank = comm->rank;
+      devWork.count = task->count;
+    }
+    
     devWork.isOneRPN = comm->isOneRPN;
     devWork.netRegUsed = devWork.regUsed = 0;
     devWork.gfx9CheapFenceOff = gfx9CheapFenceOff(devWork, comm->gfx9CheapFenceOff);
