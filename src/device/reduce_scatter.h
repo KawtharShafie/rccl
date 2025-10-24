@@ -16,6 +16,33 @@ namespace {
 #else
   __device__ __attribute__((noinline)) void runRing(int tid, int nthreads, struct ncclDevWorkColl* work) {
 #endif
+    if (work->enableDirectReduceScatter) {
+      const int nranks = ncclShmem.comm.nRanks;
+      int currentRank = work->currentRank;
+      size_t count = work->count;
+
+      //Access the temporary buffer with the data to be reduced
+      //T* tempBuffer = (T*)work->tempBuff;
+      //T* recvBuffer = (T*)work->recvbuff;
+      //T* sendBuffer = (T*)work->sendbuff;
+      const ssize_t sizePerRank = count / nranks;
+
+      // Perform direct reduction using reduceCopy
+      for (int i = 0; i < nranks; i++) {
+        const ssize_t offset = i * sizePerRank;
+        T* recvbuff = (T*)work->recvbuff + offset;
+        const T* sendbuff;
+        if (i == currentRank) {
+          sendbuff = (const T*)work->sendbuff + offset;
+        } else {
+          sendbuff = (const T*)work->tempBuff + offset;
+        }
+
+        // Use reduceCopy to perform the reduction into recvbuff
+        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
+            tid, nthreads, 0, nullptr, false, 1, (void**)&sendbuff, 1, (void**)&recvbuff, sizePerRank);
+      }
+    } else{
     ncclRing *ring = &ncclShmem.channel.ring;
     int const *ringRanks = ring->userRanks;
     const int nranks = ncclShmem.comm.nRanks;
@@ -128,9 +155,11 @@ namespace {
           ncclShmem.comm.npKitEventCollectContexts + npKitCtxIdx);
     }
 #endif
+  } 
   }
 }
 
+#if 0
 template<typename T, typename RedOp>
 #if defined(USE_INDIRECT_FUNCTION_CALL) && !defined(__gfx942__) && !defined(__gfx950__)
 __device__ void runDirectReduceScatter(int tid, int nthreads, struct ncclDevWorkColl* work) {
@@ -163,6 +192,7 @@ __device__ void runDirectReduceScatter(int tid, int nthreads, struct ncclDevWork
     }
   }
 }
+#endif 
 
 #if defined(__gfx942__) || defined(__gfx950__) // Use a single slice per simple primitive for a single node on some GFX9 devices.
 #define rcclReduceScatterRunRingSimpleProtoImpl(tid, nthreads, work) \
@@ -189,11 +219,12 @@ struct RunWorkColl<ncclFuncReduceScatter, T, RedOp, NCCL_ALGO_RING, NCCL_PROTO_S
 template<typename T, typename RedOp>
 struct RunWorkColl<ncclFuncReduceScatter, T, RedOp, NCCL_ALGO_RING, NCCL_PROTO_LL> {
   __device__ __forceinline__ void run(int tid, int nthreads, struct ncclDevWorkColl* work) {
-    if (work->enableDirectReduceScatter) {
-      runDirectReduceScatter<T, RedOp>(tid, nthreads, work);
-    } else {
-      runRing<T, RedOp, ProtoLL>(tid, nthreads, work);
-    }
+    /*
+       if (work->enableDirectReduceScatter) {
+       runDirectReduceScatter<T, RedOp>(tid, nthreads, work);
+       } else {
+       */
+    runRing<T, RedOp, ProtoLL>(tid, nthreads, work);
   }
 };
 
