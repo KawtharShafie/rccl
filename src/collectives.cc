@@ -79,6 +79,9 @@ const char* ncclProtoToString(int proto) {
   }
 }
 
+// Direct Reduce Scatter Threshold
+RCCL_PARAM(DirectReduceScatterThreshold, "DIRECT_REDUCE_SCATTER_THRESHOLD", 16777216);
+
 NCCL_API(ncclResult_t, ncclAllGather, const void* sendbuff, void* recvbuff, size_t sendcount,
     ncclDataType_t datatype, ncclComm_t comm, cudaStream_t stream);
 
@@ -410,13 +413,16 @@ ncclResult_t ncclReduceScatter_impl(const void* sendbuff, void* recvbuff, size_t
       recvcount, datatype, 0, 0, op, mscclFuncReduceScatter, comm, stream);
   }
 
-  if (comm->enableDirectReduceScatter) {
+  if (msgSize <= rcclParamDirectReduceScatterThreshold() && rcclParamDirectReduceScatterThreshold() > -1) {
+    comm->enableDirectReduceScatter = 1;
     // Use Direct Reduce Scatter Algorithm
     if (recvcount == 0) return ncclSuccess;
     size_t offset = recvcount * ncclTypeSize(datatype);
     if (((char *) sendbuff) == (((char *) recvbuff) + comm->rank * offset)) {
       in_place = 1;
     }
+    
+    printf("---DEBUG Direct RS---Rank %d---recvcount %zu---offset %zu---\n", comm->rank, recvcount, offset);
 
     NCCLCHECK(ncclGroupStart());
     for (int i = 0; i < nRanks; i++) {

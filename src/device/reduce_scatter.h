@@ -19,17 +19,17 @@ namespace {
     if (work->enableDirectReduceScatter) {
       const int nranks = ncclShmem.comm.nRanks;
       int currentRank = work->currentRank;
-      size_t count = work->count;
+      const ssize_t count = work->count;
 
       //Access the temporary buffer with the data to be reduced
       //T* tempBuffer = (T*)work->tempBuff;
       //T* recvBuffer = (T*)work->recvbuff;
       //T* sendBuffer = (T*)work->sendbuff;
-      const ssize_t sizePerRank = count / nranks;
+      //const ssize_t sizePerRank = count / nranks;
 
       // Perform direct reduction using reduceCopy
       for (int i = 0; i < nranks; i++) {
-        const ssize_t offset = i * sizePerRank;
+        const ssize_t offset = i * count; //sizePerRank;
         T* recvbuff = (T*)work->recvbuff + offset;
         const T* sendbuff;
         if (i == currentRank) {
@@ -40,7 +40,7 @@ namespace {
 
         // Use reduceCopy to perform the reduction into recvbuff
         reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
-            tid, nthreads, 0, nullptr, false, 1, (void**)&sendbuff, 1, (void**)&recvbuff, sizePerRank);
+            tid, nthreads, 0, nullptr, false, 1, (void**)&sendbuff, 1, (void**)&recvbuff, count);
       }
     } else{
     ncclRing *ring = &ncclShmem.channel.ring;
