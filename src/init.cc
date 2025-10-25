@@ -2040,7 +2040,7 @@ static ncclResult_t ncclCommInitRankFunc(struct ncclAsyncJob* job_) {
   NCCLCHECK(commSetUnrollFactor(comm));
 
   // Allocate Temp Buffer for Direct Reduce Scatter
-  NCCLCHECK(ncclCudaMalloc(&(comm->tempbuff), TEMP_BUFF_SIZE));
+  NCCLCHECK(ncclCudaMalloc(&(comm->tempBuff), TEMP_BUFF_SIZE));
   #if 0
   comm->tempBuff = (void*)malloc(TEMP_BUFF_SIZE);
   //ncclResult_t result = ncclMemAlloc(&(comm->tempBuff), TEMP_BUFF_SIZE);
