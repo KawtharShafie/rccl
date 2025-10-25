@@ -422,7 +422,7 @@ ncclResult_t ncclReduceScatter_impl(const void* sendbuff, void* recvbuff, size_t
       in_place = 1;
     }
     
-    printf("---DEBUG Direct RS---Rank %d---recvcount %zu---offset %zu---\n", comm->rank, recvcount, offset);
+    //printf("---DEBUG Direct RS---Rank %d---recvcount %zu---offset %zu---\n", comm->rank, recvcount, offset);
 
     NCCLCHECK(ncclGroupStart());
     for (int i = 0; i < nRanks; i++) {
