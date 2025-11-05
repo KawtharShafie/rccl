@@ -416,14 +416,16 @@ ncclResult_t ncclReduceScatter_impl(const void* sendbuff, void* recvbuff, size_t
   if (msgSize <= rcclParamDirectReduceScatterThreshold() && rcclParamDirectReduceScatterThreshold() > -1) {
     comm->enableDirectReduceScatter = 1;
     // Use Direct Reduce Scatter Algorithm
+    //if (comm->rank == 0) printf("\nUsing Direct RS for msg_size: %zd\n", msgSize);
     if (recvcount == 0) return ncclSuccess;
     size_t offset = recvcount * ncclTypeSize(datatype);
-    if (((char *) sendbuff) == (((char *) recvbuff) + comm->rank * offset)) {
+    if (((void *) sendbuff) == ((void *)(((char*)recvbuff) + comm->rank * offset))) {
       in_place = 1;
     }
     
     //printf("---DEBUG Direct RS---Rank %d---recvcount %zu---offset %zu---\n", comm->rank, recvcount, offset);
-
+    //Copy Currents ranks data to tempbuff
+    NCCLCHECK(ncclCudaMemcpy((char*)tempbuff + comm->rank * offset, (char*)sendbuff + comm->rank * offset, recvcount));
     NCCLCHECK(ncclGroupStart());
     for (int i = 0; i < nRanks; i++) {
       int peer = (comm->rank + i) % nRanks;
@@ -431,11 +433,12 @@ ncclResult_t ncclReduceScatter_impl(const void* sendbuff, void* recvbuff, size_t
         continue;
       }
       //TODO: Explore Batching Sends to study Register Pressure
-      NCCLCHECK(ncclSend(((char *)sendbuff) + peer * offset, recvcount, datatype, peer, comm, stream));
-      NCCLCHECK(ncclRecv(((char *)tempbuff) + peer * offset, recvcount, datatype, peer, comm, stream));
+      NCCLCHECK(ncclSend((void*)((char*)sendbuff + peer * offset), recvcount, datatype, peer, comm, stream));
+      NCCLCHECK(ncclRecv((void*)((char*)tempbuff + peer * offset), recvcount, datatype, peer, comm, stream));
     }
     NCCLCHECK(ncclGroupEnd());
   }
+  //return ncclSuccess;
   return ncclEnqueueCheck(&info);
 }
 
