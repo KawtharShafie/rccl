@@ -17,31 +17,65 @@ namespace {
   __device__ __attribute__((noinline)) void runRing(int tid, int nthreads, struct ncclDevWorkColl* work) {
 #endif
     if (work->enableDirectReduceScatter) {
-      const int nranks = ncclShmem.comm.nRanks;
+      int nranks = ncclShmem.comm.nRanks;
       int currentRank = work->currentRank;
-      const ssize_t count = work->count;
+      const ssize_t numElements = work->count;
+      const ssize_t count = work->count * sizeof(T);
 
       //Access the temporary buffer with the data to be reduced
-      //T* tempBuffer = (T*)work->tempBuff;
-      //T* recvBuffer = (T*)work->recvbuff;
-      //T* sendBuffer = (T*)work->sendbuff;
-      //const ssize_t sizePerRank = count / nranks;
+      const ssize_t recv_offset = currentRank * count;
+      T* recvbuff = (T*)work->recvbuff + recv_offset;
+#if 0 
+      if (tid==0) {
+        printf("\n---Size of T: %zd", sizeof(T));      
+        printf("\n---Rank: %d, numElements: %d, count: %d, recv_offset: %d\n", currentRank, numElements, count, recv_offset);      
+      }
+#endif
 
+      //const ssize_t send_offset = i * count; //sizePerRank;
+      const T* tempbuff = (const T*)work->tempBuff;
+      if (tid < nthreads) {
+        //tempbuff[nranks*count] = recvbuff[recv_offset];
+        ((T*)tempbuff)[nranks * count] = *recvbuff;
+        nranks++;
+#if 0
+        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, nranks, 0, 1, 1, 0>
+          (tid, nthreads, ncclShmem.redOpArgs[0], ncclShmem.redOpArgs, false, nranks, (void**)tempbuff, 1, (void**)recvbuff, numElements);
+#endif
+          const int maxSrcs = nranks;
+        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, nranks, 0, 1, 1, 0>(
+            tid, nthreads, ncclShmem.redOpArgs[0], ncclShmem.redOpArgs, false, nranks, (void**)tempbuff, 1, (void**)recvbuff, numElements);
+      }
+#if 0
       // Perform direct reduction using reduceCopy
       for (int i = 0; i < nranks; i++) {
-        const ssize_t offset = i * count; //sizePerRank;
-        T* recvbuff = (T*)work->recvbuff + offset;
+        const ssize_t send_offset = i * count;
+        const T* sendbuff = (const T*)work->sendbuff + send_offset;
+        const T* tempbuff = (const T*)work->tempBuff + send_offset;
+        //tempbuff[nranks] = recvbuff[recv_offset];
+      
+      if (i == currentRank) {
+        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
+            tid, nthreads, 0, nullptr, false, 1, (void**)sendbuff, 1, (void**)recvbuff, numElements);
+        } else {
+        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
+            tid, nthreads, 0, nullptr, false, 1, (void**)tempbuff, 1, (void**)recvbuff, numElements);
+        }
+#endif
+#if 0
         const T* sendbuff;
         if (i == currentRank) {
           sendbuff = (const T*)work->sendbuff + offset;
         } else {
           sendbuff = (const T*)work->tempBuff + offset;
         }
+#endif
+#if 0
 
         // Use reduceCopy to perform the reduction into recvbuff
         reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
             tid, nthreads, 0, nullptr, false, 1, (void**)&sendbuff, 1, (void**)&recvbuff, count);
-      }
+#endif
     } else{
     ncclRing *ring = &ncclShmem.channel.ring;
     int const *ringRanks = ring->userRanks;
