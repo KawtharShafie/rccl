@@ -2041,15 +2041,6 @@ static ncclResult_t ncclCommInitRankFunc(struct ncclAsyncJob* job_) {
 
   // Allocate Temp Buffer for Direct Reduce Scatter
   NCCLCHECK(ncclCudaMalloc(&(comm->tempBuff), TEMP_BUFF_SIZE));
-  #if 0
-  comm->tempBuff = (void*)malloc(TEMP_BUFF_SIZE);
-  //ncclResult_t result = ncclMemAlloc(&(comm->tempBuff), TEMP_BUFF_SIZE);
-  if(comm->tempBuff == NULL) {
-  fprintf(stderr, "---DEBUG Direct RS---TempBuff memory allocation failure.\n");
-  //if (result != ncclSuccess) {
-  //  printf("Error allocating temporary buffer for direct RS: %s\n", ncclGetErrorString(result));
-  }
-#endif
 
 #ifdef ENABLE_MSCCLPP
   if (job->parent) {
