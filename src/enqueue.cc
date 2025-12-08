@@ -388,7 +388,7 @@ ncclResult_t ncclTasksRegAndEnqueue(struct ncclComm* comm) {
     // Direct Reduce Scatter 
     if (comm->enableDirectReduceScatter) {
       devWork.enableDirectReduceScatter = comm->enableDirectReduceScatter;
-      devWork.tempBuff = comm->tempBuff;
+      devWork.tempBuff = (void*)comm->tempBuff;
       devWork.currentRank = comm->rank;
       devWork.count = task->count;
     }

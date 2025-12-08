@@ -16,66 +16,38 @@ namespace {
 #else
   __device__ __attribute__((noinline)) void runRing(int tid, int nthreads, struct ncclDevWorkColl* work) {
 #endif
+    // Direct Reduce Scatter
     if (work->enableDirectReduceScatter) {
       int nranks = ncclShmem.comm.nRanks;
       int currentRank = work->currentRank;
       const ssize_t numElements = work->count;
-      const ssize_t count = work->count * sizeof(T);
 
-      //Access the temporary buffer with the data to be reduced
-      const ssize_t recv_offset = currentRank * count;
-      T* recvbuff = (T*)work->recvbuff + recv_offset;
-#if 0 
-      if (tid==0) {
-        printf("\n---Size of T: %zd", sizeof(T));      
-        printf("\n---Rank: %d, numElements: %d, count: %d, recv_offset: %d\n", currentRank, numElements, count, recv_offset);      
+      float* printBuffer = static_cast<float*>(work->tempBuff);
+      for (int j = 0; j < nranks && tid == 0; j++) {
+        printf("\n---Rank: %d, ---j: %d, ---value at tempbuff: %f\n", currentRank, j, printBuffer[j]);
       }
-#endif
-
-      //const ssize_t send_offset = i * count; //sizePerRank;
-      const T* tempbuff = (const T*)work->tempBuff;
-      if (tid < nthreads) {
-        //tempbuff[nranks*count] = recvbuff[recv_offset];
-        ((T*)tempbuff)[nranks * count] = *recvbuff;
-        nranks++;
-#if 0
-        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, nranks, 0, 1, 1, 0>
-          (tid, nthreads, ncclShmem.redOpArgs[0], ncclShmem.redOpArgs, false, nranks, (void**)tempbuff, 1, (void**)recvbuff, numElements);
-#endif
-          const int maxSrcs = nranks;
-        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, nranks, 0, 1, 1, 0>(
-            tid, nthreads, ncclShmem.redOpArgs[0], ncclShmem.redOpArgs, false, nranks, (void**)tempbuff, 1, (void**)recvbuff, numElements);
-      }
-#if 0
-      // Perform direct reduction using reduceCopy
-      for (int i = 0; i < nranks; i++) {
-        const ssize_t send_offset = i * count;
-        const T* sendbuff = (const T*)work->sendbuff + send_offset;
-        const T* tempbuff = (const T*)work->tempBuff + send_offset;
-        //tempbuff[nranks] = recvbuff[recv_offset];
       
-      if (i == currentRank) {
-        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
-            tid, nthreads, 0, nullptr, false, 1, (void**)sendbuff, 1, (void**)recvbuff, numElements);
-        } else {
-        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
-            tid, nthreads, 0, nullptr, false, 1, (void**)tempbuff, 1, (void**)recvbuff, numElements);
-        }
-#endif
-#if 0
-        const T* sendbuff;
-        if (i == currentRank) {
-          sendbuff = (const T*)work->sendbuff + offset;
-        } else {
-          sendbuff = (const T*)work->tempBuff + offset;
-        }
-#endif
-#if 0
+      // Set recv offset in recvbuff to current rank offset
+      const ssize_t recv_offset = currentRank * numElements;
+      T* recvbuff = (T*)work->recvbuff + recv_offset;
 
-        // Use reduceCopy to perform the reduction into recvbuff
-        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
-            tid, nthreads, 0, nullptr, false, 1, (void**)&sendbuff, 1, (void**)&recvbuff, count);
-#endif
+      // Array of src pointers pointing to rank offsets in tempBuff
+      void* srcPtrs[8];  // TODO: Adjust value to nRanks or maxRanks
+      for (int i = 0; i < nranks; i++) {
+        // Define offset into tempbuff for each rank's data
+        const ssize_t src_offset = i * numElements;
+        srcPtrs[i] = (void*)((T*)work->tempBuff + src_offset);
+      }
+
+      // Array for destination pointer to recvbuff
+      void* dstPtrs[1];
+      dstPtrs[0] = (void*)recvbuff;
+
+      // Call reduction across all rank offsets in tempbuff and store in recvbuff
+      // TODO: Adjust maxSrcs to nRanks 
+      reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 8, 0, 1, 1, 0>
+        (tid, nthreads, ncclShmem.redOpArgs[0], ncclShmem.redOpArgs, false, nranks, srcPtrs, 1, dstPtrs, numElements);
+    
     } else{
     ncclRing *ring = &ncclShmem.channel.ring;
     int const *ringRanks = ring->userRanks;
