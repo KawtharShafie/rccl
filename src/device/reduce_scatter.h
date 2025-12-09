@@ -22,15 +22,12 @@ namespace {
       int currentRank = work->currentRank;
       const ssize_t numElements = work->count;
 
+      int debug_print = 0;
       float* printBuffer = static_cast<float*>(work->tempBuff);
-      for (int j = 0; j < nranks && tid == 0; j++) {
+      for (int j = 0; j < nranks && tid == 0 && debug_print == 1; j++) {
         printf("\n---Rank: %d, ---j: %d, ---value at tempbuff: %f\n", currentRank, j, printBuffer[j]);
       }
       
-      // Set recv offset in recvbuff to current rank offset
-      const ssize_t recv_offset = currentRank * numElements;
-      T* recvbuff = (T*)work->recvbuff + recv_offset;
-
       // Array of src pointers pointing to rank offsets in tempBuff
       void* srcPtrs[8];  // TODO: Adjust value to nRanks or maxRanks
       for (int i = 0; i < nranks; i++) {
@@ -39,6 +36,7 @@ namespace {
         srcPtrs[i] = (void*)((T*)work->tempBuff + src_offset);
       }
 
+      T* recvbuff = (T*)work->recvbuff;
       // Array for destination pointer to recvbuff
       void* dstPtrs[1];
       dstPtrs[0] = (void*)recvbuff;

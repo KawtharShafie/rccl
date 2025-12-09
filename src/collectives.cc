@@ -422,16 +422,16 @@ ncclResult_t ncclReduceScatter_impl(const void* sendbuff, void* recvbuff, size_t
       in_place = 1;
     }
     
-    //printf("---DEBUG Direct RS---Rank %d---recvcount %zu---offset %zu---\n", comm->rank, recvcount, offset);
     //Copy Currents ranks data to tempbuff
     //NCCLCHECK(ncclCudaMemcpy((char*)tempbuff + comm->rank * offset, (char*)sendbuff + comm->rank * offset, recvcount));
-    //TODO: Evaluate content of tempbuff here after memcpy
     hipMemcpy((char*)tempbuff + comm->rank * offset, (char*)sendbuff + comm->rank * offset, recvcount * ncclTypeSize(datatype), hipMemcpyDeviceToDevice);
+    
     if (debug_print == 1) {
       float *hostRecvData = new float[1024];
       hipMemcpy(hostRecvData, tempbuff, nRanks*offset, hipMemcpyDeviceToHost);
       printf("\n---Rank: %d, recvcount: %d, offset: %d, ---value at tempbuff: %f\n", comm->rank, recvcount, offset, hostRecvData[comm->rank]);
     }
+    
     NCCLCHECK(ncclGroupStart());
     for (int i = 0; i < nRanks; i++) {
       int peer = (comm->rank + i) % nRanks;
@@ -443,8 +443,7 @@ ncclResult_t ncclReduceScatter_impl(const void* sendbuff, void* recvbuff, size_t
       NCCLCHECK(ncclRecv((void*)((char*)tempbuff + peer * offset), recvcount, datatype, peer, comm, stream));
     }
     NCCLCHECK(ncclGroupEnd());
-    //hipStreamSynchronize(stream);
-    //TODO: Print contents of tempbuf again on host side after streamsync 
+    
     if (debug_print == 1) {
       float *hostTempBuff = new float[1024];
       hipMemcpy(hostTempBuff, tempbuff, nRanks*offset, hipMemcpyDeviceToHost);
@@ -453,7 +452,6 @@ ncclResult_t ncclReduceScatter_impl(const void* sendbuff, void* recvbuff, size_t
       }
     }
   }
-  //return ncclSuccess;
   return ncclEnqueueCheck(&info);
 }
 
