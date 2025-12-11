@@ -19,17 +19,10 @@ namespace {
     // Direct Reduce Scatter
     if (work->enableDirectReduceScatter) {
       int nranks = ncclShmem.comm.nRanks;
-      int currentRank = work->currentRank;
       const ssize_t numElements = work->count;
 
-      int debug_print = 0;
-      float* printBuffer = static_cast<float*>(work->tempBuff);
-      for (int j = 0; j < nranks && tid == 0 && debug_print == 1; j++) {
-        printf("\n---Rank: %d, ---j: %d, ---value at tempbuff: %f\n", currentRank, j, printBuffer[j]);
-      }
-      
       // Array of src pointers pointing to rank offsets in tempBuff
-      void* srcPtrs[8];  // TODO: Adjust value to nRanks or maxRanks
+      void* srcPtrs[32];  // TODO: Adjust value to nRanks or maxRanks
       for (int i = 0; i < nranks; i++) {
         // Define offset into tempbuff for each rank's data
         const ssize_t src_offset = i * numElements;
@@ -43,7 +36,7 @@ namespace {
 
       // Call reduction across all rank offsets in tempbuff and store in recvbuff
       // TODO: Adjust maxSrcs to nRanks 
-      reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 8, 0, 1, 1, 0>
+      reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 32, 0, 1, 1, 0>
         (tid, nthreads, ncclShmem.redOpArgs[0], ncclShmem.redOpArgs, false, nranks, srcPtrs, 1, dstPtrs, numElements);
     
     } else{
@@ -163,41 +156,6 @@ namespace {
   }
 }
 
-#if 0
-template<typename T, typename RedOp>
-#if defined(USE_INDIRECT_FUNCTION_CALL) && !defined(__gfx942__) && !defined(__gfx950__)
-__device__ void runDirectReduceScatter(int tid, int nthreads, struct ncclDevWorkColl* work) {
-#else
-  __device__ __attribute__((noinline)) void runDirectReduceScatter(int tid, int nthreads, struct ncclDevWorkColl* work) {
-#endif
-    const int nranks = ncclShmem.comm.nRanks;
-    const int currentRank = (T*)work->currentRank;
-    size_t count = (T*)work->count;
-
-    //Access the temporary buffer with the data to be reduced
-    const T* tempBuffer = (const T*)work->tempBuff;
-    T* recvBuffer = (T*)work->recvbuff;
-    T* sendBuffer = (T*)work->sendbuff;
-    const ssize_t sizePerRank = count / nranks;
-
-    // Perform direct reduction using reduceCopy
-    for (int i = 0; i < nranks; i++) {
-      const ssize_t offset = i * sizePerRank;
-
-      if (i == currentRank) {
-        // Use reduceCopy to perform the reduction of elements of current rank
-        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
-            tid, nthreads, 0, nullptr, false, 1, sendBuffer + offset, 1, (void**)&recvbuff, sizePerRank);
-      } else {
-        // Use reduceCopy to perform the reduction into recvbuff
-        reduceCopy<COLL_UNROLL, USE_ACC, RedOp, T, 0, 1, 1, 0, 1, 1, 0>(
-            tid, nthreads, 0, nullptr, false, 1, (void**)&tempBuffer + offset, 1, (void**)&recvbuff, sizePerRank);
-      }
-    }
-  }
-}
-#endif 
-
 #if defined(__gfx942__) || defined(__gfx950__) // Use a single slice per simple primitive for a single node on some GFX9 devices.
 #define rcclReduceScatterRunRingSimpleProtoImpl(tid, nthreads, work) \
   if(work->rcclUseOneSlice){ \
@@ -223,11 +181,6 @@ struct RunWorkColl<ncclFuncReduceScatter, T, RedOp, NCCL_ALGO_RING, NCCL_PROTO_S
 template<typename T, typename RedOp>
 struct RunWorkColl<ncclFuncReduceScatter, T, RedOp, NCCL_ALGO_RING, NCCL_PROTO_LL> {
   __device__ __forceinline__ void run(int tid, int nthreads, struct ncclDevWorkColl* work) {
-    /*
-       if (work->enableDirectReduceScatter) {
-       runDirectReduceScatter<T, RedOp>(tid, nthreads, work);
-       } else {
-       */
     runRing<T, RedOp, ProtoLL>(tid, nthreads, work);
   }
 };
